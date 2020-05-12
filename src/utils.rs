@@ -81,33 +81,60 @@ pub async fn read_protocol_lines<I>(input: &mut I, lines: &mut Vec<String>, limi
 /// forwarding will be stopped with an event.
 pub async fn read_chunked_stream<I>(stream: &mut I, source: &mut Vec<u8>, limit: Option<usize>) -> Result<usize, Error>
     where
-    I: Write + Read + Unpin,
+    I: Read + Unpin,
 {
     let mut buffer: Vec<u8> = Vec::new();
-    let mut count = 0;
-    loop {
+    let mut stage = 0; // 0=characters, 1=first\r, 2=first\n, 3=second\r, 4=second\n
+    let mut count = 0; // total
 
-        let mut bytes = [0u8; 1024];
-        let size = match stream.read(&mut bytes).await {
+    loop {
+        let mut byte = [0u8];
+        let size = match stream.read(&mut byte).await {
             Ok(size) => size,
             Err(_) => return Err(Error::StreamNotReadable),
         };
-        let mut bytes = &mut bytes[0..size].to_vec();
-        count += size;
+        let byte = byte[0];
 
-        if limit.is_some() && count >= limit.unwrap() {
-            return Err(Error::SizeLimitExceeded(limit.unwrap()));
-        }
-
-        source.append(&mut bytes);
-
-        buffer.append(&mut bytes);
-        buffer = (&buffer[buffer.len()-5..]).to_vec();
-        if vec_has_sequence(&buffer, &[48, 13, 10, 13, 10]) { // last chunk
+        if size == 0 { // unexpected
             break;
+        } else if byte == 0x0D { // char \r
+            if stage == 0 || stage == 2 {
+                stage += 1;
+            } else {
+                return Err(Error::InvalidData);
+            }
+        } else if byte == 0x0A { // char \n
+            if stage == 1 || stage == 3 {
+                if stage == 3 {
+                    break; // end
+                } else {
+                    let length = match String::from_utf8(buffer.to_vec()) {
+                        Ok(length) => match i64::from_str_radix(&length, 16) {
+                            Ok(length) => length as usize,
+                            Err(_) => return Err(Error::InvalidData),
+                        },
+                        Err(_) => return Err(Error::InvalidData),
+                    };
+                    if length == 0 {
+                        break;
+                    } else if limit.is_some() && count + length > limit.unwrap() {
+                        return Err(Error::SizeLimitExceeded(limit.unwrap()));
+                    } else {
+                        read_sized_stream(stream, source, length).await?;
+                        read_sized_stream(stream, &mut Vec::new(), 2).await?;
+                        count += length;
+                    }
+                    buffer.clear();
+                    stage = 0;
+                }
+            } else {
+                return Err(Error::InvalidData);
+            }
+        } else { // arbitrary char
+            buffer.push(byte);
         }
-        buffer = (&buffer[buffer.len()-5..]).to_vec();
     }
+
     Ok(count)
 }
 
@@ -115,56 +142,16 @@ pub async fn read_sized_stream<I>(stream: &mut I, source: &mut Vec<u8>, length: 
     where
     I: Read + Unpin + ?Sized,
 {
-    let mut count = 0;
-    loop {
-        let mut bytes = [0u8; 1024];
-        let size = match stream.read(&mut bytes).await {
-            Ok(size) => size,
-            Err(_) => return Err(Error::StreamNotReadable),
-        };
-        let mut bytes = &mut bytes[0..size].to_vec();
-        count += size;
+    let mut bytes = vec![0u8; length];
+    match stream.read_exact(&mut bytes).await {
+        Ok(size) => size,
+        Err(_) => return Err(Error::StreamNotReadable),
+    };
 
-        source.append(&mut bytes);
+    source.append(&mut bytes);
 
-        if size == 0 || count == length {
-            break;
-        } else if count > length {
-            return Err(Error::SizeLimitExceeded(length));
-        }
-    }
-    Ok(count)
+    Ok(length)
 }
-
-/// Streams body data from input to output.
-// pub async fn forward_body<I, O>(mut input: &mut I, mut output: &mut O, lines: &Vec<String>, limit: Option<usize>) -> Result<(), Error>
-//     where
-//     I: Write + Read + Unpin,
-//     O: Write + Read + Unpin,
-// {
-//     let encoding = match read_header(&lines, "Transfer-Encoding") {
-//         Some(encoding) => encoding,
-//         None => String::from("identity"),
-//     };
-
-//     if encoding.contains("chunked") {
-//         forward_chunked_body(&mut input, &mut output, limit).await
-//     } else {
-//         let length = match read_header(&lines, "Content-Length") {
-//             Some(encoding) => match string_to_usize(&encoding) {
-//                 Some(encoding) => encoding,
-//                 None => return Err(Error::InvalidHeader(String::from("Content-Length"))),
-//             },
-//             None => 0,
-//         };
-//         if length == 0 {
-//             return Ok(());
-//         } else if limit.is_some() && length > limit.unwrap() {
-//             return Err(Error::SizeLimitExceeded(limit.unwrap()));
-//         }
-//         forward_sized_body(&mut input, &mut output, length).await
-//     }
-// }
 
 /// Streams chunk body data from input to output. Body length is unknown but
 /// we can provide size limit.
@@ -257,6 +244,15 @@ pub async fn relay_sized_stream<I, O>(input: &mut I, output: &mut O, length: usi
 mod tests {
     use super::*;
     
+    #[async_std::test]
+    async fn reads_chinked_stream() {
+        let stream = String::from("6\r\nHello \r\n6\r\nWorld!\r\n0\r\n\r\n");
+        let mut stream = stream.as_bytes();
+        let mut source = Vec::new();
+        read_chunked_stream(&mut stream, &mut source, None).await.unwrap();
+        assert_eq!(String::from_utf8(source).unwrap(), "Hello World!");
+    }
+
     #[async_std::test]
     async fn checks_vector_has_sequence() {
         assert!(vec_has_sequence(&[0x0D, 0x0A, 0x0D, 0x0A], &[0x0D, 0x0A, 0x0D, 0x0A]));
