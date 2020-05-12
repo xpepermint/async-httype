@@ -2,7 +2,7 @@
 name = "async-httype"
 description = "Common types for HTTP operations."
 license = "MIT"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Kristijan Sedlak <xpepermint@gmail.com>"]
 edition = "2018"
 documentation = "https://github.com/xpepermint/async-httype"
