@@ -234,7 +234,12 @@ impl Response {
             None => return Err(Error::InvalidData),
         };
 
-        self.lines[0] = format!("{} {} {}", version, status_code, status_message);
+        let head = format!("{} {} {}", version, status_code, status_message);
+        if self.lines.is_empty() {
+            self.lines.push(head);
+        } else {
+            self.lines[0] = head;
+        }
 
         Ok(())
     }

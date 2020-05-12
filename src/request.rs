@@ -229,7 +229,12 @@ impl Request {
             None => return Err(Error::InvalidData),
         };
 
-        self.lines[0] = format!("{} {} {}", method, uri, version);
+        let head = format!("{} {} {}", method, uri, version);
+        if self.lines.is_empty() {
+            self.lines.push(head);
+        } else {
+            self.lines[0] = head;
+        }
 
         Ok(())
     }
