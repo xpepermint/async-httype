@@ -1,0 +1,16 @@
+[package]
+name = "async-httype"
+description = "Common types for HTTP operations."
+license = "MIT"
+version = "0.1.0"
+authors = ["Kristijan Sedlak <xpepermint@gmail.com>"]
+edition = "2018"
+documentation = "https://github.com/xpepermint/async-httype"
+homepage = "https://github.com/xpepermint/async-httype"
+repository = "https://github.com/xpepermint/async-httype"
+
+[dependencies]
+async-std = { version = "^1.5.0" }
+
+[dev-dependencies]
+async-std = { version = "^1.5.0", features = ["attributes"] }
