@@ -1,7 +1,7 @@
 use std::fmt;
+use std::collections::HashMap;
 use async_std::io::{Read, Write};
-use crate::{Error};
-use crate::utils::{read_chunked_stream, read_sized_stream};
+use crate::{Error, read_chunked_stream, read_sized_stream, write_to_stream, flush_stream};
 
 pub struct Body {
     bytes: Vec<u8>,
@@ -43,9 +43,30 @@ impl Body {
         self.length_limit = None;
     }
 
+    pub async fn read<I>(&mut self, stream: &mut I, res: &HashMap<String, String>) -> Result<usize, Error>
+        where
+        I: Read + Unpin,
+    {
+        let length = res.get("Content-Length");
+        let encoding = res.get("Transfer-Encoding");
+
+        if encoding.is_some() && *encoding.unwrap() == String::from("chunked") {
+            self.read_chunked(stream).await
+        } else {
+            let length = match length {
+                Some(length) => match length.parse::<usize>() {
+                    Ok(length) => length,
+                    Err(_) => return Err(Error::InvalidHeader(String::from("Content-Length"))),
+                },
+                None => return Err(Error::InvalidHeader(String::from("Content-Length"))),
+            };
+            self.read_sized(stream, length).await
+        }
+    }
+
     pub async fn read_chunked<I>(&mut self, stream: &mut I) -> Result<usize, Error>
         where
-        I: Write + Read + Unpin,
+        I: Read + Unpin,
     {
         let limit = match self.length_limit {
             Some(limit) => match limit == 0 {
@@ -63,7 +84,7 @@ impl Body {
     
     pub async fn read_sized<I>(&mut self, stream: &mut I, length: usize) -> Result<usize, Error>
         where
-        I: Write + Read + Unpin,
+        I: Read + Unpin,
     {
         match self.length_limit {
             Some(limit) => match length + self.length > limit {
@@ -78,25 +99,16 @@ impl Body {
 
         Ok(length)
     }
-
-    pub async fn read_string<V: Into<String>>(&mut self, value: V) -> Result<usize, Error> {
-        let mut bytes = value.into().as_bytes().to_vec();
     
-        let length = bytes.len();
-        match self.length_limit {
-            Some(limit) => match length + self.length > limit {
-                true => return Err(Error::SizeLimitExceeded(limit)),
-                false => (),
-            },
-            None => (),
-        };
-    
-        self.bytes.append(&mut bytes);
-        self.length += length;
-    
-        Ok(length)
+    pub async fn write<I>(&mut self, stream: &mut I) -> Result<usize, Error>
+        where
+        I: Write + Unpin,
+    {
+        let size = write_to_stream(stream, &self.bytes()).await?;
+        flush_stream(stream).await?;
+        Ok(size)
     }
-    
+
     pub fn clear(&mut self) {
         self.bytes.clear();
         self.length = 0;

@@ -141,7 +141,7 @@ impl Request {
 
     pub async fn write<I>(&mut self, stream: &mut I) -> Result<usize, Error>
         where
-        I: Write + Unpin + ?Sized,
+        I: Write + Unpin,
     {
         let size = write_to_stream(stream, &self.to_bytes()).await?;
         flush_stream(stream).await?;

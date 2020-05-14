@@ -140,7 +140,7 @@ pub async fn read_chunked_stream<I>(stream: &mut I, source: &mut Vec<u8>, limit:
 
 pub async fn read_sized_stream<I>(stream: &mut I, source: &mut Vec<u8>, length: usize) -> Result<usize, Error>
     where
-    I: Read + Unpin + ?Sized,
+    I: Read + Unpin,
 {
     let mut bytes = vec![0u8; length];
     match stream.read_exact(&mut bytes).await {
@@ -199,8 +199,8 @@ pub async fn relay_chunked_stream<I, O>(input: &mut I, output: &mut O, limit: Op
 /// have to read input protocol headers before we call this method.
 pub async fn relay_sized_stream<I, O>(input: &mut I, output: &mut O, length: usize) -> Result<usize, Error>
     where
-    I: Read + Unpin + ?Sized,
-    O: Write + Unpin + ?Sized,
+    I: Read + Unpin,
+    O: Write + Unpin,
 {
     if length == 0 {
         return Ok(0);
@@ -230,7 +230,7 @@ pub async fn relay_sized_stream<I, O>(input: &mut I, output: &mut O, length: usi
 
 pub async fn write_to_stream<S>(stream: &mut S, data: &Vec<u8>) -> Result<usize, Error>
     where
-    S: Write + Unpin + ?Sized,
+    S: Write + Unpin,
 {
     match stream.write(&data).await {
         Ok(size) => Ok(size),
@@ -240,7 +240,7 @@ pub async fn write_to_stream<S>(stream: &mut S, data: &Vec<u8>) -> Result<usize,
 
 pub async fn flush_stream<S>(stream: &mut S) -> Result<(), Error>
     where
-    S: Write + Unpin + ?Sized,
+    S: Write + Unpin,
 {
     match stream.flush().await {
         Ok(_) => Ok(()),

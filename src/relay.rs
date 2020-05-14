@@ -1,6 +1,5 @@
 use async_std::io::{Read, Write};
-use crate::{Error};
-use crate::utils::{relay_chunked_stream, relay_sized_stream};
+use crate::{Error, relay_chunked_stream, relay_sized_stream};
 
 #[derive(Debug)]
 pub struct Relay {
@@ -58,8 +57,8 @@ impl Relay {
     
     pub async fn relay_sized<I, O>(&mut self, input: &mut I, output: &mut O, length: usize) -> Result<usize, Error>
         where
-        I: Read + Unpin + ?Sized,
-        O: Write + Unpin + ?Sized,
+        I: Read + Unpin,
+        O: Write + Unpin,
     {
         match self.length_limit {
             Some(limit) => match length + self.length > limit {
