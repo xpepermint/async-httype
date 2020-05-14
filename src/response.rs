@@ -1,9 +1,8 @@
 use std::fmt;
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
-use async_std::io::{Read};
-use crate::{Error};
-use crate::utils::{read_protocol_lines};
+use async_std::io::{Read, Write};
+use crate::{Error, read_protocol_lines, write_to_stream, flush_stream};
 
 #[derive(Debug)]
 pub struct Response {
@@ -126,7 +125,7 @@ impl Response {
         self.length_limit = None;
     }
 
-    pub async fn read_stream<I>(&mut self, stream: &mut I) -> Result<usize, Error>
+    pub async fn read<I>(&mut self, stream: &mut I) -> Result<usize, Error>
         where
         I: Read + Unpin,
     {
@@ -144,26 +143,13 @@ impl Response {
         Ok(length)
     }
 
-    pub async fn read_string<V: Into<String>>(&mut self, value: V) -> Result<(), Error> {
-        let value = value.into();
-        if !value.contains("\r\n") {
-            return Err(Error::InvalidData);
-        }
-
-        let length = value.chars().count();
-        match self.length_limit {
-            Some(limit) => match length + self.length > limit {
-                true => return Err(Error::SizeLimitExceeded(limit)),
-                false => (),
-            },
-            None => (),
-        };
-        self.length += length;
-
-        let mut lines: Vec<String> = value.split("\r\n").map(|s| s.to_string()).collect();
-        self.lines.append(&mut lines);
-
-        Ok(())
+    pub async fn write<I>(&mut self, stream: &mut I) -> Result<usize, Error>
+        where
+        I: Write + Unpin + ?Sized,
+    {
+        let size = write_to_stream(stream, &self.to_bytes()).await?;
+        flush_stream(stream).await?;
+        Ok(size)
     }
 
     pub fn clear(&mut self) {
@@ -279,5 +265,22 @@ impl fmt::Display for Response {
 impl From<Response> for String {
     fn from(item: Response) -> String {
         item.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[async_std::test]
+    async fn writes_to_stream() {
+        let mut stream = Vec::new();
+        let mut req = Response::new();
+        req.set_status_code(200);
+        req.set_status_message("OK");
+        req.set_version("1.1");
+        req.build_head().unwrap();
+        req.write(&mut stream).await.unwrap();
+        assert_eq!(String::from_utf8(stream).unwrap(), "HTTP/1.1 200 OK\r\n\r\n");
     }
 }

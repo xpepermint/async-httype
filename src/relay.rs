@@ -37,7 +37,7 @@ impl Relay {
         self.length_limit = None;
     }
 
-    pub async fn relay_chunked_stream<I, O>(&mut self, input: &mut I, output: &mut O) -> Result<usize, Error>
+    pub async fn relay_chunked<I, O>(&mut self, input: &mut I, output: &mut O) -> Result<usize, Error>
         where
         I: Write + Read + Unpin,
         O: Write + Read + Unpin,
@@ -56,7 +56,7 @@ impl Relay {
         Ok(length)
     }
     
-    pub async fn relay_sized_stream<I, O>(&mut self, input: &mut I, output: &mut O, length: usize) -> Result<usize, Error>
+    pub async fn relay_sized<I, O>(&mut self, input: &mut I, output: &mut O, length: usize) -> Result<usize, Error>
         where
         I: Read + Unpin + ?Sized,
         O: Write + Unpin + ?Sized,

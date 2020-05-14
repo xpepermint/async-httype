@@ -1,9 +1,8 @@
 use std::fmt;
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
-use async_std::io::{Read};
-use crate::{Error};
-use crate::utils::{read_protocol_lines};
+use async_std::io::{Read, Write};
+use crate::{Error, read_protocol_lines, write_to_stream, flush_stream};
 
 #[derive(Debug)]
 pub struct Request {
@@ -122,7 +121,7 @@ impl Request {
         self.length_limit = None;
     }
 
-    pub async fn read_stream<I>(&mut self, stream: &mut I) -> Result<usize, Error>
+    pub async fn read<I>(&mut self, stream: &mut I) -> Result<usize, Error>
         where
         I: Read + Unpin,
     {
@@ -140,26 +139,13 @@ impl Request {
         Ok(length)
     }
 
-    pub async fn read_string<V: Into<String>>(&mut self, value: V) -> Result<(), Error> {
-        let value = value.into();
-        if !value.contains("\r\n") {
-            return Err(Error::InvalidData);
-        }
-
-        let length = value.chars().count();
-        match self.length_limit {
-            Some(limit) => match length + self.length > limit {
-                true => return Err(Error::SizeLimitExceeded(limit)),
-                false => (),
-            },
-            None => (),
-        };
-        self.length += length;
-
-        let mut lines: Vec<String> = value.split("\r\n").map(|s| s.to_string()).collect();
-        self.lines.append(&mut lines);
-
-        Ok(())
+    pub async fn write<I>(&mut self, stream: &mut I) -> Result<usize, Error>
+        where
+        I: Write + Unpin + ?Sized,
+    {
+        let size = write_to_stream(stream, &self.to_bytes()).await?;
+        flush_stream(stream).await?;
+        Ok(size)
     }
 
     pub fn clear(&mut self) {
@@ -275,5 +261,22 @@ impl fmt::Display for Request {
 impl From<Request> for String {
     fn from(item: Request) -> String {
         item.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[async_std::test]
+    async fn writes_to_stream() {
+        let mut stream = Vec::new();
+        let mut req = Request::new();
+        req.set_method("POST");
+        req.set_uri("/foo");
+        req.set_version("1.1");
+        req.build_head().unwrap();
+        req.write(&mut stream).await.unwrap();
+        assert_eq!(String::from_utf8(stream).unwrap(), "POST /foo HTTP/1.1\r\n\r\n");
     }
 }

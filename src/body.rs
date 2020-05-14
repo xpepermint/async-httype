@@ -43,7 +43,7 @@ impl Body {
         self.length_limit = None;
     }
 
-    pub async fn read_chunked_stream<I>(&mut self, stream: &mut I) -> Result<usize, Error>
+    pub async fn read_chunked<I>(&mut self, stream: &mut I) -> Result<usize, Error>
         where
         I: Write + Read + Unpin,
     {
@@ -61,7 +61,7 @@ impl Body {
         Ok(length)
     }
     
-    pub async fn read_sized_stream<I>(&mut self, stream: &mut I, length: usize) -> Result<usize, Error>
+    pub async fn read_sized<I>(&mut self, stream: &mut I, length: usize) -> Result<usize, Error>
         where
         I: Write + Read + Unpin,
     {
