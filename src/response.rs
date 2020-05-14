@@ -90,8 +90,8 @@ impl Response {
         self.status_code = Some(value);
     }
 
-    pub fn set_status_message(&mut self, value: String) {
-        self.status_message = Some(value);
+    pub fn set_status_message<V: Into<String>>(&mut self, value: V) {
+        self.status_message = Some(value.into());
     }
 
     pub fn set_version<V: Into<String>>(&mut self, value: V) {

@@ -179,14 +179,8 @@ pub async fn relay_chunked_stream<I, O>(input: &mut I, output: &mut O, limit: Op
         let mut bytes = &mut bytes[0..size].to_vec();
         count += size;
 
-        match output.write(&bytes).await {
-            Ok(source) => source,
-            Err(_) => return Err(Error::StreamNotWritable),
-        };
-        match output.flush().await {
-            Ok(_) => (),
-            Err(_) => return Err(Error::StreamNotWritable),
-        };
+        write_to_stream(output, &bytes).await?;
+        flush_stream(output).await?;
 
         buffer.append(&mut bytes);
         buffer = (&buffer[buffer.len()-5..]).to_vec();
@@ -222,14 +216,8 @@ pub async fn relay_sized_stream<I, O>(input: &mut I, output: &mut O, length: usi
         let bytes = &mut bytes[0..size].to_vec();
         count += size;
 
-        match output.write(&bytes).await {
-            Ok(size) => size,
-            Err(_) => return Err(Error::StreamNotWritable),
-        };
-        match output.flush().await {
-            Ok(_) => (),
-            Err(_) => return Err(Error::StreamNotWritable),
-        };
+        write_to_stream(output, &bytes).await?;
+        flush_stream(output).await?;
 
         if size == 0 || count == length {
             break;
@@ -238,6 +226,26 @@ pub async fn relay_sized_stream<I, O>(input: &mut I, output: &mut O, length: usi
         }
     }
     Ok(count)
+}
+
+pub async fn write_to_stream<S>(stream: &mut S, data: &Vec<u8>) -> Result<usize, Error>
+    where
+    S: Write + Unpin + ?Sized,
+{
+    match stream.write(&data).await {
+        Ok(size) => Ok(size),
+        Err(_) => Err(Error::StreamNotWritable),
+    }
+}
+
+pub async fn flush_stream<S>(stream: &mut S) -> Result<(), Error>
+    where
+    S: Write + Unpin + ?Sized,
+{
+    match stream.flush().await {
+        Ok(_) => Ok(()),
+        Err(_) => Err(Error::StreamNotWritable),
+    }
 }
 
 #[cfg(test)]
