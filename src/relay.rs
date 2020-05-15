@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use async_std::io::{Read, Write};
 use crate::{Error, relay_chunked_stream, relay_sized_stream};
 
@@ -34,6 +35,28 @@ impl Relay {
 
     pub fn remove_length_limit(&mut self) {
         self.length_limit = None;
+    }
+
+    pub async fn relay<I, O>(&mut self, input: &mut I, output: &mut O, req: &HashMap<String, String>) -> Result<usize, Error>
+        where
+        I: Write + Read + Unpin,
+        O: Write + Read + Unpin,
+    {
+        let length = req.get("Content-Length");
+        let encoding = req.get("Transfer-Encoding");
+
+        if encoding.is_some() && encoding.unwrap().contains(&String::from("chunked")) {
+            self.relay_chunked(input, output).await
+        } else {
+            let length = match length {
+                Some(length) => match length.parse::<usize>() {
+                    Ok(length) => length,
+                    Err(_) => return Err(Error::InvalidHeader(String::from("Content-Length"))),
+                },
+                None => return Err(Error::InvalidHeader(String::from("Content-Length"))),
+            };
+            self.relay_sized(input, output, length).await
+        }
     }
 
     pub async fn relay_chunked<I, O>(&mut self, input: &mut I, output: &mut O) -> Result<usize, Error>

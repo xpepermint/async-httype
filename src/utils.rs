@@ -228,11 +228,11 @@ pub async fn relay_sized_stream<I, O>(input: &mut I, output: &mut O, length: usi
     Ok(count)
 }
 
-pub async fn write_to_stream<S>(stream: &mut S, data: &Vec<u8>) -> Result<usize, Error>
+pub async fn write_to_stream<S>(stream: &mut S, data: &[u8]) -> Result<usize, Error>
     where
     S: Write + Unpin,
 {
-    match stream.write(&data).await {
+    match stream.write(data).await {
         Ok(size) => Ok(size),
         Err(_) => Err(Error::StreamNotWritable),
     }

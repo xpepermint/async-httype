@@ -50,7 +50,7 @@ impl Body {
         let length = res.get("Content-Length");
         let encoding = res.get("Transfer-Encoding");
 
-        if encoding.is_some() && *encoding.unwrap() == String::from("chunked") {
+        if encoding.is_some() && encoding.unwrap().contains(&String::from("chunked")) {
             self.read_chunked(stream).await
         } else {
             let length = match length {
